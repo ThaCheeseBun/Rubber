@@ -21,7 +21,9 @@ export async function readLocalSetting(key: string, def: string = ""): Promise<s
     if (!cache) {
         // The UM file contains the user's id number.
         const um = JSON.parse((await fse.readFile(`${process.env.APPDATA}\\GameMakerStudio2\\um.json`)).toString());
-        const userFolder = um.username.substring(0, um.username.indexOf("@")) + "_" + um.userID;
+        var userFolder;
+        if (um.username.indexOf("@") == -1) userFolder = um.username + "_" + um.userID;
+        else userFolder = um.username.substring(0, um.username.indexOf("@")) + "_" + um.userID;
         const preferencesLocation = `${process.env.APPDATA}\\GameMakerStudio2\\` + userFolder + `\\local_settings.json`;
         cache = JSON.parse((await fse.readFile(preferencesLocation)).toString());
     }
@@ -29,6 +31,8 @@ export async function readLocalSetting(key: string, def: string = ""): Promise<s
 }
 export async function getUserDir() {
     const um = JSON.parse((await fse.readFile(`${process.env.APPDATA}\\GameMakerStudio2\\um.json`)).toString());
-    const userFolder = um.username.substring(0, um.username.indexOf("@")) + "_" + um.userID;
+    var userFolder;
+    if (um.username.indexOf("@") == -1) userFolder = um.username + "_" + um.userID;
+    else userFolder = um.username.substring(0, um.username.indexOf("@")) + "_" + um.userID;
     return join(`${process.env.APPDATA}`, "GameMakerStudio2", userFolder);
 }

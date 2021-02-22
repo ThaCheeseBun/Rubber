@@ -46,11 +46,14 @@ export interface IRubberOptions {
     /** Alternate GameMakerStudio2 ProgramData Directory */
     gamemakerDataLocation?: string;
 
+    /** License check skipping */
+    skipLicenseCheck?: boolean;
+
     /** Target Device Config File Directory */
     deviceConfigFileLocation?: string;
 
     /** Target Device Name*/
-    targetDeviceName?: string;    
+    targetDeviceName?: string;
 
     platform: "windows" |
         "mac" |
@@ -79,11 +82,11 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
     // Build component for checking later.
     let component = "";
     let componentBuild = "";
-    
+
 
     // Find out what Igor.exe needs based on the platform
     let defaultPackageKey = "Package";
-    let requireRemoteClient = false;    
+    let requireRemoteClient = false;
     let packageOnly = false;
     let targetMask = "64";
     switch (platform){
@@ -96,7 +99,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             component = "Switch";
             componentBuild = "switch.build_module";
             targetMask = "144115188075855872";
-            break;            
+            break;
         case "windows":
             //Windows uses a different key for Igor to build package
             defaultPackageKey = "PackageZip";
@@ -122,10 +125,10 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             componentBuild = "Linux.build_module";
             requireRemoteClient = true;
             targetMask = "128";
-            break;                                         
+            break;
         default:
             component = "Unsupported";
-            break;               
+            break;
     }
 
     //Check target device name against the target device config file later
@@ -138,7 +141,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
 
         // iOS can only support build package and the rest needs to be completed in XCode
         if(packageOnly && options.build !== "zip") throw new Error("Can only build package for '" + platform + "'");
-        
+
         // only Windows supports installer
         if(component !== "Windows" && options.build === "installer") throw new Error("Only Windows can build installer'");
 
@@ -167,7 +170,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             }
             else{
                 options.gamemakerLocation = "C:\\Program Files\\GameMaker Studio 2";
-            }            
+            }
         }
         else{
             if(!(await fse.pathExists(options.gamemakerLocation))) {
@@ -178,8 +181,8 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
 
         let deviceConfig;
         let targetOptionValues;
-        let iosHostMacValues;                    
-        if ((typeof options.deviceConfigFileLocation === "undefined" || options.deviceConfigFileLocation === "")){          
+        let iosHostMacValues;
+        if ((typeof options.deviceConfigFileLocation === "undefined" || options.deviceConfigFileLocation === "")){
             if (requireRemoteClient){
                 throw new Error("This platform requires a target device config file");
             }
@@ -193,7 +196,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             }
             catch(e){
                 throw new Error("Invalid Target device config file.");
-            }    
+            }
 
             //Validate the Target Device Name or grab the first device if left empty
             let devices;
@@ -204,9 +207,9 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
                     break;
                 default:
                     devices = deviceConfig[platform];
-                    break;                
+                    break;
             }
-            
+
             if (targetDeviceName === ""){
                 //If left empty, grab the first available device
                 targetDeviceName = Object.keys(devices)[0];
@@ -224,17 +227,17 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
                 if (!iosHostMacValues){
                     throw new Error("Building for iOS requires the host Mac info in the device config file");
                 }
-            }            
-        }             
-        
-        
+            }
+        }
+
+
         // Compile process starts now, emit the starting event.
         emitter.emit("compileStatus", "Starting Rubber\n");
-        
+
         // Get some project path data.
         const projectDir = dirname(projectFile);
         const projectName = basename(projectFile).substring(0, basename(projectFile).length - extname(projectFile).length);
-        
+
         if (!(await fse.pathExists(join(projectDir, "options", "main", "inherited", "options_main.inherited.yy")))) {
             throw new Error("Missing options_main.inherited.yy. This can be because of a partial project, or the usage of a differen parent project structure.")
         }
@@ -245,7 +248,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             throw new Error("options_main.inherited.yy is missing project GUID, cannot identify project.");
         }
         const guid = guid_match[1].replace("{", "").replace("}", "");
-        
+
         const buildTempPath = join(tempFolder, "gamemaker-rubber", guid);
         let runtimeLocation = "";
         if (options.runtimeLocation) {
@@ -260,12 +263,12 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
                 } catch(e) {
                     throw new Error("Invalid GameMaker Studio 2 Runtime Index. Reinstall GameMaker.");
                 }
-    
+
                 if (theRuntime === ""){
                     // Use the active runtime if user did not specify
                     if (typeof runtimes.active !== "string") {
                         throw new Error("GameMaker has no active runtime, start up GameMaker and compile a project first.");
-                    }                                        
+                    }
                     runtimeLocation = runtimes[runtimes.active];
                 }
                 else{
@@ -273,7 +276,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
                         runtimeLocation = runtimes[theRuntime];
                     }
                     else{
-                        throw new Error("Cannot find the chosen runtime. Make sure the input is correct and the runtime is downloaded.");                        
+                        throw new Error("Cannot find the chosen runtime. Make sure the input is correct and the runtime is downloaded.");
                     }
                 }
                 runtimeLocation = runtimeLocation.substring(0, runtimeLocation.indexOf("&"));
@@ -283,11 +286,13 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
         }
 
         const userDir = await getUserDir();
-        const licensePlist = (await fse.readFile(join(userDir, "licence.plist"))).toString();
-        const allowedComponents = (licensePlist.match(/<key>components<\/key>.*?\n.*?<string>(.*?)<\/string>/) as any)[1].split(";");
+        if (!options.skipLicenseCheck) {
+          const licensePlist = (await fse.readFile(join(userDir, "licence.plist"))).toString();
+          const allowedComponents = (licensePlist.match(/<key>components<\/key>.*?\n.*?<string>(.*?)<\/string>/) as any)[1].split(";");
 
-        if (!allowedComponents.includes(componentBuild)) {
-            throw new Error("You dont have the permission to build a GameMaker game for " + platform + ". This happens if your logged in as someone else, or didnt buy the module.");
+          if (!allowedComponents.includes(componentBuild)) {
+              throw new Error("You dont have the permission to build a GameMaker game for " + platform + ". This happens if your logged in as someone else, or didnt buy the module.");
+          }
         }
         //#endregion
 
@@ -300,12 +305,12 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             * 2. Fill out all the JSON Files,  TODO: Upload my documentation about it.
             * 3. Invoke IGOR via the command line.
             */
-    
+
         // 1.
         await fse.mkdirs(join(buildTempPath, "GMCache"));
         await fse.mkdirs(join(buildTempPath, "GMTemp"));
         await fse.mkdirs(join(buildTempPath, "Output"));
-    
+
         // 2.
         /* There are 3 Files we need to create:
             * a. build.bff
@@ -315,10 +320,10 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             * e. targetoptions.json
             * *f. MainOptions.json
             * *g. PlatformOptions.json
-            * 
+            *
             * Marked with * were found unnecessary by #9
             */
-    
+
         emitter.emit("compileStatus", "Creating Build Data\n");
         // a.
         const buildMeta: IBuildMeta = {
@@ -346,7 +351,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             verbose: (options.verbose === true) ? "True" : "False",
         };
         await fse.writeFile(join(buildTempPath, "build.bff"), JSON.stringify(buildMeta));
-        
+
         // b.
         const macros: { [macro: string]: string } = {
             // INPUTS
@@ -424,16 +429,16 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
         */
 
         // d.
-        
+
         const steamOptions: IBuildSteamOptions = {
             steamsdk_path: await readLocalSetting("machine.Platform Settings.Steam.steamsdk_path"),
         };
         await fse.writeFile(join(buildTempPath, "steam_options.yy"), JSON.stringify(steamOptions));
-        
+
 
         // e.
         const targetoptions: IBuildTargetOptions = {
-            /** 
+            /**
              * 1. If remote client is not required, only need to know if building for YYC or VM
              * 2. If building for iOS, need to also read the config info from the host Mac
             */
@@ -447,13 +452,13 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             hostmac: requireRemoteClient && targetOptionValues.hostmac ? targetOptionValues.hostmac : "",
             deviceIP: requireRemoteClient && targetOptionValues.deviceIP ? targetOptionValues.deviceIP : "",
             target_ip: requireRemoteClient && targetOptionValues.target_ip ? targetOptionValues.target_ip : "",
-            hostname: platform === "ios" ? iosHostMacValues.hostname : (requireRemoteClient && targetOptionValues.hostname ? targetOptionValues.hostname : ""),            
+            hostname: platform === "ios" ? iosHostMacValues.hostname : (requireRemoteClient && targetOptionValues.hostname ? targetOptionValues.hostname : ""),
             username: platform === "ios" ? iosHostMacValues.username : (requireRemoteClient && targetOptionValues.username ? targetOptionValues.username : ""),
             encrypted_password: platform === "ios" ? iosHostMacValues.encrypted_password : (requireRemoteClient && targetOptionValues.encrypted_password ? targetOptionValues.encrypted_password : ""),
-            install_dir: platform === "ios" ? iosHostMacValues.install_dir : (requireRemoteClient && targetOptionValues.install_dir ? targetOptionValues.install_dir : "")            
+            install_dir: platform === "ios" ? iosHostMacValues.install_dir : (requireRemoteClient && targetOptionValues.install_dir ? targetOptionValues.install_dir : "")
         };
         await fse.writeFile(join(buildTempPath, "targetoptions.json"), JSON.stringify(targetoptions));
-    
+
         // f.
         /*
         await inheritYYFile(join(projectDir, "options/main/inherited/options_main.inherited.yy"),
@@ -514,7 +519,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
         const exportType = options.build == "test" ? "Run" : (options.build === "zip" ? defaultPackageKey : "PackageNsis")
         const igorArgs = ["-options=" + join(buildTempPath, "build.bff"), "--", component, clearRemoteCache ? "Clean" : exportType];
         const igor = spawn(join(runtimeLocation, "bin", "Igor.exe"), igorArgs);
-    
+
         // !!! #8 todo: store errors here, emit at end.
         const igorErrors: string[] = [];
 
@@ -537,7 +542,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
             }
             emitter.emit("rawStdout", data.toString())
         });
-    
+
         igor.stderr.on('data', (data) => {
             emitter.emit("rawStdout", data.toString())
             if (igorState == "igor") {
@@ -546,7 +551,7 @@ export function compile(options: IRubberOptions, clearRemoteCache: boolean = fal
                 emitter.emit("gameStatus", data.toString())
             }
         });
-    
+
         igor.on('close', async(code) => {
             if (!lanchingGame) {
                 emitter.emit("compileFinished", igorErrors);
